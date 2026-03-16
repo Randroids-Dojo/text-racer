@@ -298,6 +298,130 @@ function drawTrophy(ctx, wins) {
   ctx.restore();
 }
 
+// Crowd animation — neon wireframe spectators along track edges
+// Seed a stable set of crowd members so they persist across frames
+const CROWD_COUNT_TOP = 28;
+const CROWD_COUNT_BOTTOM = 28;
+const crowdMembers = [];
+
+function initCrowd() {
+  crowdMembers.length = 0;
+  for (let i = 0; i < CROWD_COUNT_TOP + CROWD_COUNT_BOTTOM; i++) {
+    crowdMembers.push({
+      phase: Math.random() * Math.PI * 2,      // animation phase offset
+      speed: 0.8 + Math.random() * 1.4,        // bounce speed multiplier
+      height: 0.7 + Math.random() * 0.6,       // relative height of figure
+      armWave: Math.random() * Math.PI * 2,     // arm wave phase
+      colorIdx: Math.floor(Math.random() * 5),  // 0-3 = car colors, 4 = cyan
+    });
+  }
+}
+initCrowd();
+
+const CROWD_PALETTE = ['#FF3333', '#33FF66', '#5577FF', '#FFFF33', '#00FFCC'];
+const CROWD_GLOW    = ['#FF0000', '#00FF44', '#3355FF', '#FFFF00', '#00CCAA'];
+
+function drawCrowdFigure(ctx, x, y, member, time, excitement) {
+  const s = scale();
+  const h = 14 * member.height * s;
+
+  // Bounce amount scales with excitement (0 = idle, 1 = max)
+  const bounce = Math.sin(time * member.speed * (1 + excitement * 2) + member.phase)
+    * (2 + excitement * 6) * s;
+  const armAngle = Math.sin(time * member.speed * 1.5 + member.armWave)
+    * (0.3 + excitement * 1.0);
+
+  const color = CROWD_PALETTE[member.colorIdx];
+  const glow = CROWD_GLOW[member.colorIdx];
+
+  const figY = y + bounce;
+
+  ctx.save();
+  ctx.translate(x, figY);
+
+  // Dim the crowd slightly so it doesn't overpower the track
+  ctx.globalAlpha = 0.35 + excitement * 0.3;
+  ctx.shadowBlur = 4 + excitement * 6;
+  ctx.shadowColor = glow;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1 * s;
+  ctx.lineCap = 'round';
+
+  // Head
+  const headR = 2.5 * s;
+  ctx.beginPath();
+  ctx.arc(0, -h, headR, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Body
+  ctx.beginPath();
+  ctx.moveTo(0, -h + headR);
+  ctx.lineTo(0, -h * 0.3);
+  ctx.stroke();
+
+  // Arms — wave with excitement
+  const armLen = h * 0.35;
+  const baseArmY = -h * 0.7;
+  // Left arm
+  ctx.beginPath();
+  ctx.moveTo(0, baseArmY);
+  ctx.lineTo(
+    -armLen * Math.cos(armAngle - 0.5),
+    baseArmY - armLen * Math.sin(armAngle - 0.5)
+  );
+  ctx.stroke();
+  // Right arm
+  ctx.beginPath();
+  ctx.moveTo(0, baseArmY);
+  ctx.lineTo(
+    armLen * Math.cos(armAngle + 0.3),
+    baseArmY - armLen * Math.sin(armAngle + 0.3)
+  );
+  ctx.stroke();
+
+  // Legs (simple V)
+  const legLen = h * 0.35;
+  const legBase = -h * 0.3;
+  ctx.beginPath();
+  ctx.moveTo(-legLen * 0.4, legBase + legLen);
+  ctx.lineTo(0, legBase);
+  ctx.lineTo(legLen * 0.4, legBase + legLen);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawCrowd(ctx, state, time) {
+  const s = scale();
+  const lt = laneTop();
+  const lb = laneBottom();
+
+  // Excitement level based on game phase
+  let excitement = 0;
+  if (state.phase === 'countdown') excitement = 0.3;
+  else if (state.phase === 'racing') excitement = 0.5;
+  else if (state.phase === 'finished') excitement = 1.0;
+
+  // Top row — above track
+  const topY = lt - 6 * s;
+  const margin = 30 * s;
+  const topSpacing = (canvasW - 2 * margin) / (CROWD_COUNT_TOP - 1);
+
+  for (let i = 0; i < CROWD_COUNT_TOP; i++) {
+    const x = margin + i * topSpacing;
+    drawCrowdFigure(ctx, x, topY, crowdMembers[i], time, excitement);
+  }
+
+  // Bottom row — below track
+  const botY = lb + 8 * s;
+  const botSpacing = (canvasW - 2 * margin) / (CROWD_COUNT_BOTTOM - 1);
+
+  for (let i = 0; i < CROWD_COUNT_BOTTOM; i++) {
+    const x = margin + i * botSpacing;
+    drawCrowdFigure(ctx, x, botY, crowdMembers[CROWD_COUNT_TOP + i], time, excitement);
+  }
+}
+
 // Draw countdown overlay
 function drawCountdown(ctx, text) {
   const s = scale();
@@ -348,8 +472,9 @@ export function resizeCanvas(canvas) {
 }
 
 // Main render function
-export function render(ctx, state) {
+export function render(ctx, state, time) {
   drawBackground(ctx);
+  drawCrowd(ctx, state, (time || 0) / 1000);
   drawTrack(ctx);
 
   const colorKeys = ['r', 'g', 'b', 'y'];
