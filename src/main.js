@@ -121,7 +121,7 @@ function gameLoop(time) {
   }
 
   updateRacers(state, dtSec);
-  render(ctx, state);
+  render(ctx, state, time);
   requestAnimationFrame(gameLoop);
 }
 
